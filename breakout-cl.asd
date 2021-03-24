@@ -4,7 +4,14 @@
   :version
   "0.0.0"
   :depends-on
-  nil
+  (
+   "fude-gl" ; opengl utilities.
+   "sdl2" ; window manager.
+   "dexador" ; http client.
+   "opticl" ; image file loader.
+   "3d-matrices" ; Matrix-operations.
+   "harmony" ; Audio processing server.
+   )
   :pathname
   "src/"
   :components
