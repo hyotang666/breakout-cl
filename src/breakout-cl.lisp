@@ -150,17 +150,6 @@
               (|spliteColor| :vec3))
     "color = vec4(spliteColor, 1.0) * texture(image, texCoord);"))
 
-;;;; VERTICES
-
-(defparameter *quads*
-  (concatenate '(array single-float (*))
-               (make-instance 'splite :x 0.0 :y 1.0 :s 0.0 :t 1.0)
-               (make-instance 'splite :x 1.0 :y 0.0 :s 1.0 :t 0.0)
-               (make-instance 'splite :x 0.0 :y 0.0 :s 0.0 :t 0.0)
-               (make-instance 'splite :x 0.0 :y 1.0 :s 0.0 :t 1.0)
-               (make-instance 'splite :x 1.0 :y 1.0 :s 1.0 :t 1.0)
-               (make-instance 'splite :x 1.0 :y 0.0 :s 1.0 :t 0.0)))
-
 ;;;; HELPERS
 
 (defun model-matrix (x y w h &optional (rotate 0))
@@ -287,7 +276,11 @@
                 y (3d-vectors:vy new)))
         (when (< (nth-value 1 (sdl2:get-window-size win)) y)
           (decf (player-life player))
-          (make-ball player ball))))))
+          (make-ball player ball)))))
+  (:method ((ball ball) (dt float) (width integer) &key)
+    (with-slots (x y)
+        ball
+      (gl:viewport -100 0 800 600))))
 
 (defun ortho (win)
   (multiple-value-bind (w h)
@@ -407,37 +400,35 @@
 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2")
 
-(defgeneric draw (object model image texture &key)
-  (:method (model model-mat image texture &key)
+(defgeneric draw (object texture &key)
+  (:method (model-mat texture &key)
     "Default method to draw."
-    (fude-gl::in-texture texture)
-    (gl:uniform-matrix model 4 model-mat)
+    (fude-gl:in-texture texture)
+    (gl:uniform-matrix (fude-gl:uniform "model" 'splite) 4 model-mat)
     (gl:draw-arrays :triangles 0 6))
-  (:method ((bg (eql :background)) model image texture &key
+  (:method ((bg (eql :background)) texture &key
             (win (alexandria:required-argument :win)))
-    (draw model
-          (multiple-value-call #'model-matrix 0 0 (sdl2:get-window-size win))
-          image texture))
-  (:method :before ((o blocks) model image texture &key
+    (draw (multiple-value-call #'model-matrix 0 0 (sdl2:get-window-size win))
+          texture))
+  (:method :before ((o blocks) texture &key
                     (splite-color
                      (alexandria:required-argument :splite-color)))
     (3d-vectors:with-vec3 (r g b)
         (blocks-color o)
       (gl:uniformf splite-color r g b)))
-  (:method ((o game-object) model image texture &key)
+  (:method ((o game-object) texture &key)
     (with-slots (x y w h)
         o
-      (call-next-method model (model-matrix x y w h) image texture)))
-  (:method ((level array) model image (textures list) &key
+      (call-next-method (model-matrix x y w h) texture)))
+  (:method ((level array) (textures list) &key
             (splite-color (alexandria:required-argument :splite-color)))
     (dotimes (i (array-total-size level) (gl:uniformf splite-color 1 1 1))
       (let ((o (row-major-aref level i)))
-        (draw o model image (getf textures (type-of o))
-              :splite-color splite-color))))
-  (:method ((block normal-block) model image textures &key)
+        (draw o (getf textures (type-of o)) :splite-color splite-color))))
+  (:method ((block normal-block) textures &key)
     (unless (normal-block-brokenp block)
       (call-next-method)))
-  (:method ((n null) model image texture &key &allow-other-keys)) ; Do nothing.
+  (:method ((n null) texture &key &allow-other-keys)) ; Do nothing.
   )
 
 (define-condition sequence-transition () ((next :reader next :initarg :next)))
@@ -452,20 +443,29 @@
                          (go :top))))
          ,@body))))
 
-(fude-gl::deftexture background :texture-2d
+(fude-gl:deftexture background :texture-2d
   (fude-gl:tex-image-2d (ensure-image :background)))
 
-(fude-gl::deftexture block :texture-2d
+(fude-gl:deftexture block :texture-2d
   (fude-gl:tex-image-2d (ensure-image :block)))
 
-(fude-gl::deftexture block-solid :texture-2d
+(fude-gl:deftexture block-solid :texture-2d
   (fude-gl:tex-image-2d (ensure-image :block-solid)))
 
-(fude-gl::deftexture paddle :texture-2d
+(fude-gl:deftexture paddle :texture-2d
   (fude-gl:tex-image-2d (ensure-image :paddle)))
 
-(fude-gl::deftexture ball :texture-2d
+(fude-gl:deftexture ball :texture-2d
   (fude-gl:tex-image-2d (ensure-image :face)))
+
+(fude-gl:defvertices splite
+    (concatenate '(array single-float (*))
+                 (make-instance 'splite :x 0.0 :y 1.0 :s 0.0 :t 1.0)
+                 (make-instance 'splite :x 1.0 :y 0.0 :s 1.0 :t 0.0)
+                 (make-instance 'splite :x 0.0 :y 0.0 :s 0.0 :t 0.0)
+                 (make-instance 'splite :x 0.0 :y 1.0 :s 0.0 :t 1.0)
+                 (make-instance 'splite :x 1.0 :y 1.0 :s 1.0 :t 1.0)
+                 (make-instance 'splite :x 1.0 :y 0.0 :s 1.0 :t 0.0)))
 
 (defun main ()
   (uiop:nest
@@ -481,37 +481,24 @@
     (sdl2:with-gl-context (context win)
       (gl:enable :blend)
       (gl:blend-func :src-alpha :one-minus-src-alpha))
-    (fude-gl:with-shader ((fude-gl:glyph
-                            (:vertices vertices
-                                       (make-array (* 4 6)
-                                                   :element-type 'single-float
-                                                   :initial-element 0.0)
-                                       :usage :dynamic-draw)
-                            (:vertex-array glyph-setting)
-                            (:buffer buffer)
-                            (:uniform (text-projection projection) text
-                                      |textColor|)))
-      (fude-gl:in-shader fude-gl:glyph)
-      (gl:uniform-matrix text-projection 4
+    (fude-gl:with-shader ()
+      (fude-gl:in-vertices 'splite)
+      (gl:uniform-matrix (fude-gl:uniform "projection" 'splite) 4
                          (multiple-value-bind (w h)
                              (sdl2:get-window-size win)
                            (vector
                              (3d-matrices:marr
                                (3d-matrices:mortho 0 w 0 h -1 1))))))
-    (fude-gl::with-text-renderer (render-text :size 64 :win win))
+    (fude-gl:with-text-renderer (render-text :size 64 :win win))
     (sequence-handler-bind (scene #'entry-point)
       (funcall scene win #'render-text))))
 
 (defun entry-point (win text-renderer)
   (uiop:nest
-    (fude-gl:with-shader ((splite
-                            (:vertices nil *quads*)
-                            (:uniform model projection |spliteColor| image)
-                            (:vertex-array splite-setting)))
-      (fude-gl:in-shader splite))
+    (fude-gl:with-shader () (fude-gl:in-vertices 'splite))
     (fude-gl:with-textures ()
-      (gl:uniform-matrix projection 4 (ortho win))
-      (gl:uniformf |spliteColor| 1 1 1))
+      (gl:uniform-matrix (fude-gl:uniform "projection" 'splite) 4 (ortho win))
+      (gl:uniformf (fude-gl:uniform "spliteColor" 'splite) 1 1 1))
     (let* ((title "Breakout!")
            (bbox
             (vecto:string-bounding-box title (* 2 fude-gl:*font-size*)
@@ -524,10 +511,10 @@
           (otherwise (signal 'sequence-transition :next #'game)))))
     (:idle nil)
     (fude-gl:with-clear (win (:color-buffer-bit))
-      (fude-gl:in-shader splite)
-      (fude-gl:in-vertex-array splite-setting)
-      (fude-gl::connect splite image 'background)
-      (draw :background model image 'background :win win)
+      (fude-gl:in-vertices 'splite)
+      (fude-gl:in-vertex-array (fude-gl:vertex-array 'splite))
+      (fude-gl:connect 'splite "image" 'background)
+      (draw :background 'background :win win)
       (funcall text-renderer title
                :x :center
                :y (- (* (floor (nth-value 1 (sdl2:get-window-size win)) 4) 3)
@@ -539,16 +526,13 @@
 
 (defun game (win text-renderer)
   (uiop:nest
-    (fude-gl:with-shader ((splite
-                            (:vertices nil *quads*)
-                            (:uniform model projection |spliteColor| image)
-                            (:vertex-array splite-setting))))
+    (fude-gl:with-shader ())
     (fude-gl:with-textures ())
     (let* ((level (level *level1* win))
            (player (make-player win))
            (ball (make-ball player)))
-      (fude-gl:in-shader splite)
-      (gl:uniform-matrix projection 4 (ortho win)))
+      (fude-gl:in-vertices 'splite)
+      (gl:uniform-matrix (fude-gl:uniform "projection" 'splite) 4 (ortho win)))
     (sdl2:with-event-loop (:method :poll)
       (:quit ()
         t))
@@ -557,13 +541,13 @@
       (move player 0.025 (sdl2:get-window-size win) :ball ball)
       (move ball 0.025 (sdl2:get-window-size win) :player player :win win)
       (check-collision ball player level)
-      (fude-gl:in-shader splite)
-      (fude-gl:in-vertex-array splite-setting)
-      (draw :background model image 'background :win win)
-      (draw level model image '(normal-block block solid-block block-solid)
-            :splite-color |spliteColor|)
-      (draw ball model image 'ball)
-      (draw player model image 'paddle)
+      (fude-gl:in-vertices 'splite)
+      (fude-gl:in-vertex-array (fude-gl:vertex-array 'splite))
+      (draw :background 'background :win win)
+      (draw level '(normal-block block solid-block block-solid)
+            :splite-color (fude-gl:uniform "spliteColor" 'splite))
+      (draw ball 'ball)
+      (draw player 'paddle)
       (funcall text-renderer (format nil "Lives: ~S" (player-life player))
                :y (- 600 (floor fude-gl:*font-size* 2))
                :scale 0.5)
