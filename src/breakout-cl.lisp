@@ -280,11 +280,6 @@
         ball
       (gl:viewport -100 0 800 600))))
 
-(defun ortho (win)
-  (multiple-value-bind (w h)
-      (sdl2:get-window-size win)
-    (3d-matrices:mortho 0 w h 0 -1 1)))
-
 (defgeneric collidep (subject object)
   (:method ((circle ball) (rect game-object))
     (with-slots (radius x y)
@@ -477,22 +472,17 @@
       (gl:enable :blend)
       (gl:blend-func :src-alpha :one-minus-src-alpha))
     (fude-gl:with-shader ()
-      (fude-gl:in-vertices 'splite)
-      (fude-gl:send
-        (multiple-value-bind (w h)
-            (sdl2:get-window-size win)
-          (3d-matrices:mortho 0 w 0 h -1 1))
-        'splite
-        :uniform "projection"))
+      (fude-gl:send (fude-gl:ortho win) 'splite :uniform "projection"))
     (fude-gl:with-text-renderer (render-text :size 64 :win win))
     (sequence-handler-bind (scene #'entry-point)
       (funcall scene win #'render-text))))
 
 (defun entry-point (win text-renderer)
   (uiop:nest
-    (fude-gl:with-shader () (fude-gl:in-vertices 'splite))
+    (fude-gl:with-shader ())
     (fude-gl:with-textures ()
-      (fude-gl:send (ortho win) 'splite :uniform "projection")
+      (fude-gl:send (fude-gl:ortho win :top-down) 'splite
+                    :uniform "projection")
       (gl:uniformf (fude-gl:uniform "spliteColor" 'splite) 1 1 1))
     (let* ((title "Breakout!")
            (bbox
@@ -526,8 +516,8 @@
     (let* ((level (level *level1* win))
            (player (make-player win))
            (ball (make-ball player)))
-      (fude-gl:in-vertices 'splite)
-      (fude-gl:send (ortho win) 'splite :uniform "projection"))
+      (fude-gl:send (fude-gl:ortho win :top-down) 'splite
+                    :uniform "projection"))
     (sdl2:with-event-loop (:method :poll)
       (:quit ()
         t))
