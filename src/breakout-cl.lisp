@@ -144,11 +144,26 @@
 
 (fude-gl:defshader splite 330 (fude-gl:xy fude-gl:st)
   (:vertex ((|texCoord| :vec2) &uniform (model :mat4) (projection :mat4))
-    "texCoord = st;"
-    "gl_Position = projection * model * vec4(xy, 0.0, 1.0);")
+    (declaim (ftype (function nil (values)) main))
+    (defun main ()
+      "texCoord = st;"
+      "gl_Position = projection * model * vec4(xy, 0.0, 1.0);"))
   (:fragment ((color :vec4) &uniform (image :|sampler2D|)
               (|spliteColor| :vec3))
-    "color = vec4(spliteColor, 1.0) * texture(image, texCoord);"))
+    (declaim (ftype (function nil (values)) main))
+    (defun main ()
+      "color = vec4(spliteColor, 1.0) * texture(image, texCoord);")))
+
+;;;; VERTICES
+
+(fude-gl:defvertices splite
+    (concatenate '(array single-float (*))
+                 (make-instance 'splite :x 0.0 :y 1.0 :s 0.0 :t 1.0)
+                 (make-instance 'splite :x 1.0 :y 0.0 :s 1.0 :t 0.0)
+                 (make-instance 'splite :x 0.0 :y 0.0 :s 0.0 :t 0.0)
+                 (make-instance 'splite :x 0.0 :y 1.0 :s 0.0 :t 1.0)
+                 (make-instance 'splite :x 1.0 :y 1.0 :s 1.0 :t 1.0)
+                 (make-instance 'splite :x 1.0 :y 0.0 :s 1.0 :t 0.0)))
 
 ;;;; HELPERS
 
@@ -412,7 +427,7 @@
   (:method ((level array) (textures list) &key)
     (dotimes
         (i (array-total-size level)
-           (gl:uniformf (fude-gl:uniform "spliteColor" 'splite) 1 1 1))
+           (gl:uniformf (fude-gl:uniform 'splite "spliteColor") 1 1 1))
       (let ((o (row-major-aref level i)))
         (draw o (getf textures (type-of o))))))
   (:method ((block normal-block) textures &key)
@@ -448,15 +463,6 @@
 (fude-gl:deftexture ball :texture-2d
   (fude-gl:tex-image-2d (ensure-image :face)))
 
-(fude-gl:defvertices splite
-    (concatenate '(array single-float (*))
-                 (make-instance 'splite :x 0.0 :y 1.0 :s 0.0 :t 1.0)
-                 (make-instance 'splite :x 1.0 :y 0.0 :s 1.0 :t 0.0)
-                 (make-instance 'splite :x 0.0 :y 0.0 :s 0.0 :t 0.0)
-                 (make-instance 'splite :x 0.0 :y 1.0 :s 0.0 :t 1.0)
-                 (make-instance 'splite :x 1.0 :y 1.0 :s 1.0 :t 1.0)
-                 (make-instance 'splite :x 1.0 :y 0.0 :s 1.0 :t 0.0)))
-
 (defun main ()
   (uiop:nest
     (with-harmony (server)
@@ -473,17 +479,17 @@
       (gl:blend-func :src-alpha :one-minus-src-alpha))
     (fude-gl:with-shader ()
       (fude-gl:send (fude-gl:ortho win) 'splite :uniform "projection"))
-    (fude-gl:with-text-renderer (render-text :size 64 :win win))
+    (fude-gl:with-text (win :size 64))
     (sequence-handler-bind (scene #'entry-point)
-      (funcall scene win #'render-text))))
+      (funcall scene win))))
 
-(defun entry-point (win text-renderer)
+(defun entry-point (win)
   (uiop:nest
     (fude-gl:with-shader ())
     (fude-gl:with-textures ()
       (fude-gl:send (fude-gl:ortho win :top-down) 'splite
                     :uniform "projection")
-      (gl:uniformf (fude-gl:uniform "spliteColor" 'splite) 1 1 1))
+      (gl:uniformf (fude-gl:uniform 'splite "spliteColor") 1 1 1))
     (let* ((title "Breakout!")
            (bbox
             (vecto:string-bounding-box title (* 2 fude-gl:*font-size*)
@@ -498,18 +504,26 @@
     (fude-gl:with-clear (win (:color-buffer-bit))
       (fude-gl:in-vertices 'splite)
       (fude-gl:in-vertex-array (fude-gl:vertex-array 'splite))
-      (fude-gl:connect 'splite "image" 'background)
+      (fude-gl::connect 'splite "image" 'background)
       (draw :background 'background :win win)
-      (funcall text-renderer title
-               :x :center
-               :y (- (* (floor (nth-value 1 (sdl2:get-window-size win)) 4) 3)
-                     (floor (- (zpb-ttf:ymax bbox) (zpb-ttf:ymin bbox)) 2)))
-      (funcall text-renderer "Push any key to start."
-               :x :center
-               :y :center
-               :scale 0.25))))
+      (fude-gl:render-text title
+                           :x :center
+                           :y (-
+                                (*
+                                  (floor
+                                    (nth-value 1 (sdl2:get-window-size win)) 4)
+                                  3)
+                                (floor
+                                  (- (zpb-ttf:ymax bbox) (zpb-ttf:ymin bbox))
+                                  2))
+                           :win win)
+      (fude-gl:render-text "Push any key to start."
+                           :x :center
+                           :y :center
+                           :scale 0.25
+                           :win win))))
 
-(defun game (win text-renderer)
+(defun game (win)
   (uiop:nest
     (fude-gl:with-shader ())
     (fude-gl:with-textures ())
@@ -532,13 +546,13 @@
       (draw level '(normal-block block solid-block block-solid))
       (draw ball 'ball)
       (draw player 'paddle)
-      (funcall text-renderer (format nil "Lives: ~S" (player-life player))
-               :y (- 600 (floor fude-gl:*font-size* 2))
-               :scale 0.5)
+      (fude-gl:render-text (format nil "Lives: ~S" (player-life player))
+                           :y (- 600 (floor fude-gl:*font-size* 2))
+                           :scale 0.5)
       (when (zerop (player-life player))
         (signal 'sequence-transition :next #'game-over)))))
 
-(defun game-over (win text-renderer)
+(defun game-over (win)
   (uiop:nest
     (let* ((title "Game over!")
            (bbox
@@ -551,9 +565,20 @@
         (case (sdl2:scancode keysym)
           (otherwise (signal 'sequence-transition :next #'entry-point)))))
     (:idle nil
-     (funcall text-renderer title
-              :x :center
-              :y (- (* (floor (nth-value 1 (sdl2:get-window-size win)) 4) 3)
-                    (floor (- (zpb-ttf:ymax bbox) (zpb-ttf:ymin bbox)) 2)))
-     (funcall text-renderer "Push any key." :x :center :y :center :scale 0.25)
+     (fude-gl:render-text title
+                          :x :center
+                          :y (-
+                               (*
+                                 (floor
+                                   (nth-value 1 (sdl2:get-window-size win)) 4)
+                                 3)
+                               (floor
+                                 (- (zpb-ttf:ymax bbox) (zpb-ttf:ymin bbox))
+                                 2))
+                          :win win)
+     (fude-gl:render-text "Push any key."
+                          :x :center
+                          :y :center
+                          :scale 0.25
+                          :win win)
      (sdl2:gl-swap-window win) (sleep 2))))
