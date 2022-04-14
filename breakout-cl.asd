@@ -5,12 +5,12 @@
   "0.0.5"
   :depends-on
   (
-   "fude-gl" ; opengl utilities.
-   "sdl2" ; window manager.
-   "dexador" ; http client.
-   "opticl" ; image file loader.
-   "3d-matrices" ; Matrix-operations.
-   "harmony" ; Audio processing server.
+   "fude-gl"            ; Opengl utilities.
+   "sdl2"               ; Window manager.
+   "harmony"            ; Audio processing server.
+   "dexador"            ; Http client.
+   "opticl"             ; Image file loader.
+   "3d-matrices"        ; Matrix-operations.
    )
   :pathname
   "src/"
