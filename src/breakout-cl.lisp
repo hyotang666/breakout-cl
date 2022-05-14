@@ -146,13 +146,13 @@
   (:vertex ((|texCoord| :vec2) &uniform (model :mat4) (projection :mat4))
     (declaim (ftype (function nil (values)) main))
     (defun main ()
-      "texCoord = st;"
-      "gl_Position = projection * model * vec4(xy, 0.0, 1.0);"))
+      (setf |texCoord| fude-gl:st
+            gl-position (* projection model (vec4 fude-gl:xy 0.0 1.0)))))
   (:fragment ((color :vec4) &uniform (image :|sampler2D|)
               (|spliteColor| :vec3))
     (declaim (ftype (function nil (values)) main))
     (defun main ()
-      "color = vec4(spliteColor, 1.0) * texture(image, texCoord);")))
+      (setf color (* (vec4 |spliteColor| 1.0) (texture image |texCoord|))))))
 
 ;;;; VERTICES
 
@@ -412,14 +412,14 @@
   (:method (model-mat texture &key)
     "Default method to draw."
     (fude-gl:in-texture texture)
-    (fude-gl:send model-mat 'splite :uniform "model")
+    (setf (fude-gl:uniform 'splite "model") model-mat)
     (fude-gl:draw 'splite))
   (:method ((bg (eql :background)) texture &key
             (win (alexandria:required-argument :win)))
     (draw (multiple-value-call #'model-matrix 0 0 (sdl2:get-window-size win))
           texture))
   (:method :before ((o blocks) texture &key)
-    (fude-gl:send (blocks-color o) 'splite :uniform "spliteColor"))
+    (setf (fude-gl:uniform 'splite "spliteColor") (blocks-color o)))
   (:method ((o game-object) texture &key)
     (with-slots (x y w h)
         o
@@ -427,7 +427,8 @@
   (:method ((level array) (textures list) &key)
     (dotimes
         (i (array-total-size level)
-           (gl:uniformf (fude-gl:uniform 'splite "spliteColor") 1 1 1))
+           (setf (fude-gl:uniform 'splite "spliteColor")
+                   (3d-vectors:vec 1 1 1)))
       (let ((o (row-major-aref level i)))
         (draw o (getf textures (type-of o))))))
   (:method ((block normal-block) textures &key)
@@ -477,19 +478,17 @@
     (sdl2:with-gl-context (context win)
       (gl:enable :blend)
       (gl:blend-func :src-alpha :one-minus-src-alpha))
-    (fude-gl:with-shader ()
-      (fude-gl:send (fude-gl:ortho win) 'splite :uniform "projection"))
-    (fude-gl:with-text (win :size 64))
+    (fude-gl:with-text (win :size 64)
+      (setf (fude-gl:uniform 'splite "projection") (fude-gl:ortho win)))
     (sequence-handler-bind (scene #'entry-point)
       (funcall scene win))))
 
 (defun entry-point (win)
   (uiop:nest
-    (fude-gl:with-shader ())
-    (fude-gl:with-textures ()
-      (fude-gl:send (fude-gl:ortho win :top-down) 'splite
-                    :uniform "projection")
-      (gl:uniformf (fude-gl:uniform 'splite "spliteColor") 1 1 1))
+    (fude-gl:with-shader ()
+      (setf (fude-gl:uniform 'splite "projection")
+              (fude-gl:ortho win :top-down)
+            (fude-gl:uniform 'splite "spliteColor") (3d-vectors:vec 1 1 1)))
     (let* ((title "Breakout!")
            (bbox
             (vecto:string-bounding-box title (* 2 fude-gl:*font-size*)
@@ -504,7 +503,8 @@
     (fude-gl:with-clear (win (:color-buffer-bit))
       (fude-gl:in-vertices 'splite)
       (fude-gl:in-vertex-array (fude-gl:vertex-array 'splite))
-      (fude-gl::connect 'splite "image" 'background)
+      (setf (fude-gl:uniform 'splite "image")
+              (fude-gl:find-texture 'background :if-does-not-exist :create))
       (draw :background 'background :win win)
       (fude-gl:render-text title
                            :x :center
@@ -526,12 +526,11 @@
 (defun game (win)
   (uiop:nest
     (fude-gl:with-shader ())
-    (fude-gl:with-textures ())
     (let* ((level (level *level1* win))
            (player (make-player win))
            (ball (make-ball player)))
-      (fude-gl:send (fude-gl:ortho win :top-down) 'splite
-                    :uniform "projection"))
+      (setf (fude-gl:uniform 'splite "projection")
+              (fude-gl:ortho win :top-down)))
     (sdl2:with-event-loop (:method :poll)
       (:quit ()
         t))

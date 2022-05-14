@@ -2,7 +2,7 @@
 (in-package :asdf)
 (defsystem "breakout-cl"
   :version
-  "0.0.5"
+  "0.0.6"
   :depends-on
   (
    "fude-gl"            ; Opengl utilities.
